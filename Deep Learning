@@ -1,0 +1,133 @@
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.base import BaseEstimator, TransformerMixin
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.preprocessing.text import Tokenizer
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.callbacks import EarlyStopping
+
+data = pd.read_csv('tmdb_5000_movies.csv')  # Remplacez par le chemin de votre fichier CSV
+
+X = data[['budget', 'genres', 'keywords', 'original_language', 'production_countries']]
+y = data['vote_average']
+
+# Normalisation des données numériques
+scaler = StandardScaler()
+X['budget'] = scaler.fit_transform(X[['budget']])
+
+class TextPreprocessor(BaseEstimator, TransformerMixin):
+    def __init__(self, max_words=10000, max_len=100):
+        self.max_words = max_words
+        self.max_len = max_len
+        self.tokenizer = Tokenizer(num_words=self.max_words)
+    
+    def fit(self, X, y=None):
+        self.tokenizer.fit_on_texts(X)
+        return self
+    
+    def transform(self, X):
+        sequences = self.tokenizer.texts_to_sequences(X)
+        padded_sequences = pad_sequences(sequences, maxlen=self.max_len)
+        return padded_sequences
+
+# Création du pipeline pour les colonnes de texte
+text_pipeline = Pipeline([ 
+    ('text_preprocessor', TextPreprocessor(max_words=10000, max_len=100))
+])
+
+# Transformer pour les variables catégorielles simples
+categorical_features = ['original_language', 'production_countries']
+categorical_transformer = OneHotEncoder(handle_unknown='ignore')
+
+# Transformer pour les colonnes numériques
+numeric_features = ['budget']
+numeric_transformer = StandardScaler()  # Normalisation
+
+# Créer un transformer pour appliquer les transformations
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numeric_transformer, numeric_features),
+        ('text_genres', text_pipeline, 'genres'),  # Pipeline de texte pour les genres
+        ('text_keywords', text_pipeline, 'keywords'),  # Pipeline de texte pour les mots-clés
+        ('cat', categorical_transformer, categorical_features)  # Encodage OneHot pour les variables catégorielles
+    ])
+
+# Préparer les données pour l'entraînement
+X_transformed = preprocessor.fit_transform(X)
+
+# Diviser les données en ensembles d'entraînement et de test
+X_train, X_test, y_train, y_test = train_test_split(X_transformed, y, test_size=0.2, random_state=42)
+
+# Définir différentes combinaisons d'epochs et de batch_size à tester
+param_combinations = [
+    (10, 16),
+    (20, 32),
+    (30, 64),
+    (15, 32),
+    (22, 32),
+    (15, 64),
+    (17, 64),
+    (26, 32),
+
+    
+    
+
+]
+
+best_mae = float('inf')  # Initialiser un score MAE élevé pour comparer les résultats
+best_params = None  # Pour stocker les meilleurs paramètres
+best_model = None  # Pour stocker le meilleur modèle
+
+# Boucle sur les différentes combinaisons de paramètres
+for epochs, batch_size in param_combinations:
+    print(f"Testing with epochs={epochs} and batch_size={batch_size}")
+    
+    # Créer le modèle de deep learning
+    model = Sequential()
+    model.add(Dense(units=128, activation='relu', input_dim=X_train.shape[1]))  # Dimension d'entrée ajustée
+    model.add(Dropout(0.2))  # Dropout pour éviter le sur-apprentissage
+    model.add(Dense(units=64, activation='relu'))
+    model.add(Dropout(0.2))
+    model.add(Dense(units=32, activation='relu'))
+    model.add(Dense(units=1, activation='linear'))  # Couche de sortie
+
+    # Compiler le modèle
+    model.compile(optimizer=Adam(), loss='mean_squared_error', metrics=['mae'])
+
+    # Ajouter un callback pour l'arrêt anticipé
+    early_stopping = EarlyStopping(monitor='val_loss', patience=3, restore_best_weights=True)
+
+    # Entraîner le modèle
+    history = model.fit(X_train, y_train, epochs=epochs, batch_size=batch_size, validation_data=(X_test, y_test), callbacks=[early_stopping], verbose=0)
+
+    # Évaluer le modèle
+    loss, mae = model.evaluate(X_test, y_test, verbose=0)
+    print(f"Epochs={epochs}, Batch Size={batch_size} => Perte (Loss) : {loss}, Erreur absolue moyenne (MAE) : {mae}")
+    
+    # Vérifier si ce modèle a le meilleur MAE
+    if mae < best_mae:
+        best_mae = mae
+        best_params = (epochs, batch_size)
+        best_model = model
+
+# Après avoir trouvé les meilleurs paramètres, utiliser ce modèle pour faire des prédictions
+print(f"\nMeilleurs paramètres trouvés: Epochs={best_params[0]}, Batch Size={best_params[1]} avec MAE={best_mae}")
+
+# Prédictions avec le meilleur modèle
+predictions = best_model.predict(X_test)
+
+# Contraindre les prédictions entre 0 et 10
+predictions = np.clip(predictions, 0, 10)
+
+# Arrondir les prédictions à la première décimale
+predictions = np.round(predictions, 1)
+
+# Afficher les prédictions et les valeurs réelles pour une analyse rapide
+comparison = pd.DataFrame({'Prédictions': predictions.flatten(), 'Valeurs réelles': y_test})
+print(comparison.head())
