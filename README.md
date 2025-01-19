@@ -5,6 +5,7 @@ Ce projet vise à analyser et prédire les caractéristiques des films en utilis
 1. Préparation des données (ETL).
 2. Modélisation avec des approches d'apprentissage supervisé (Random Forest et Deep Learning).
 3. Évaluation des performances.
+4. Documentation approfondie avec un rapport rédigé en **LaTeX**.
 
 ---
 
@@ -16,6 +17,7 @@ Ce projet vise à analyser et prédire les caractéristiques des films en utilis
   - `tmdb_5000_movies.csv` : Données brutes des films.
   - `Données_final_Chemin.csv` : Données nettoyées et prêtes à être utilisées par les modèles.
   - `resultats_test_final.csv`, `final_results.csv`, `test_results.csv` : Résultats des prédictions.
+- **Rapport** : Documentation complète du projet, créée avec **LaTeX**, pour une présentation professionnelle et structurée.
 
 ---
 
